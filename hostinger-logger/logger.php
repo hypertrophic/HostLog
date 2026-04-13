@@ -46,7 +46,11 @@ $referer    = sanitize_log_field($_SERVER['HTTP_REFERER']    ?? '-');
 $custom_value = '';
 if (!empty($custom_field) && $host === $custom_field['domain']) {
     $path         = parse_url($request, PHP_URL_PATH) ?? '/';
-    $custom_value = sanitize_log_field(basename($path), 100);
+    $raw_value    = sanitize_log_field(basename($path), 100);
+    $pattern      = defined('CUSTOM_FIELD_PATTERN') ? CUSTOM_FIELD_PATTERN : null;
+    if ($pattern === null || preg_match($pattern, $raw_value)) {
+        $custom_value = $raw_value;
+    }
 }
 
 // --- 6. LOG FOLDER SETUP ---
