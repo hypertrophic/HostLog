@@ -35,3 +35,9 @@ $custom_field = [
 // Maximum log file size in bytes before rotation kicks in.
 // Default: 5MB. A new file is created when this limit is reached.
 define('LOG_MAX_SIZE', 5 * 1024 * 1024);
+
+// --- CUSTOM FIELD VALIDATION (optional) ---
+// If set, only values matching this pattern will be logged.
+// Leave as null to accept any value from the URL path.
+define('CUSTOM_FIELD_PATTERN', null);
+// Example: define('CUSTOM_FIELD_PATTERN', '#^Test\d+$#i');
