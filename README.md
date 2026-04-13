@@ -126,6 +126,12 @@ Logs are organized by domain and date:
 ## Custom field
 
 The logger can extract a value from the URL path for a specific domain and include it as an extra field in the log entry. Useful for tracking identifiers like member IDs, product slugs, or any path-based parameter.
+By default any value extracted from the URL path is accepted. To restrict it to a specific format; for example only values matching your member ID pattern — set `CUSTOM_FIELD_PATTERN` in `config.php`:
+
+```php
+define('CUSTOM_FIELD_PATTERN', '#^Test\d+$#i');
+```
+This prevents noise like `robots.txt` or other unrelated path segments from appearing in your logs as custom field values.
 
 Configure it in `config.php`:
 
@@ -154,7 +160,7 @@ Set `$custom_field = null` to disable this feature entirely.
 | `$host_map` | `array` | Domain → folder name mapping |
 | `$custom_field` | `array\|null` | Custom field extraction config, or `null` to disable |
 | `LOG_MAX_SIZE` | `int` | Max log file size in bytes before rotation (default: 5MB) |
-
+| `CUSTOM_FIELD_PATTERN` | `string\|null` | Optional regex to validate extracted custom field values. Set to `null` to accept any value (default). Example: `'#^Test\d+$#i'` |
 ---
 
 ## Cloudflare users
