@@ -1,4 +1,4 @@
-# HostLog
+# HostLog - v2.1.0
 
 A logging and analysis system for PHP sites hosted on **Hostinger Web Hosting**. Built to fill the gap left by Hostinger's lack of accessible raw access logs.
 
