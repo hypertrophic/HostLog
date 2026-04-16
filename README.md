@@ -41,7 +41,7 @@ Hostinger shared hosting does not provide terminal access or raw Apache/Nginx lo
 
 ### Features
 
-- Cloudflare-aware IP detection — gets the real visitor IP, not Cloudflare's
+- Cloudflare and Proxy-aware IP detection — supports `CF-Connecting-IP`, `X-Real-IP`, and `X-Forwarded-For`
 - Spoofing-resistant — validates IP headers before trusting them
 - Log injection prevention — strips newlines and control characters from all fields
 - Automatic daily log files — one file per domain per day
@@ -49,6 +49,7 @@ Hostinger shared hosting does not provide terminal access or raw Apache/Nginx lo
 - Write-lock protected — prevents file corruption from concurrent requests
 - Multi-domain support — log multiple sites into separate folders from one file
 - Optional custom field — extract any value from the URL path per domain, with optional regex validation
+- IP exclusion — skip logging for specific IPs (e.g., internal server IPs or your personal static IP)
 - Zero dependencies — pure PHP, no libraries, no Composer
 
 ### Log format
@@ -93,6 +94,8 @@ $host_map = [
     'example.com'     => 'Main',
     'sub.example.com' => 'Sub',
 ];
+
+$ignore_ips = ['127.0.0.1', '::1'];
 ```
 
 **Step 3 — Add .htaccess**
@@ -133,7 +136,7 @@ Visit your site and check the logs folder. You should see:
 | `$host_map` | `array` | Domain → folder name mapping |
 | `$custom_field` | `array\|null` | Custom field extraction config, or `null` to disable |
 | `LOG_MAX_SIZE` | `int` | Max log file size in bytes before rotation (default: 5MB) |
-| `CUSTOM_FIELD_PATTERN` | `string\|null` | Optional regex to validate extracted custom field values. Set to `null` to accept any value. Example: `'#^ECDH\d+$#i'` |
+| `CUSTOM_FIELD_PATTERN` | `string\|null` | Optional regex to validate extracted custom field values. Set to `null` to accept any value. |
 
 ### Custom field
 
@@ -149,7 +152,7 @@ $custom_field = [
 To restrict the extracted value to a specific format, set a validation pattern:
 
 ```php
-define('CUSTOM_FIELD_PATTERN', '#^ECDH\d+$#i');
+define('CUSTOM_FIELD_PATTERN', '#^ID\d+$#i');
 ```
 
 This prevents noise like `robots.txt` from appearing as custom field values in your logs. Set to `null` to accept any value.
@@ -180,6 +183,7 @@ A local Python script that reads your downloaded log files and generates a detai
 
 - Reads all log files for a domain at once — drop 30 days of logs and scan them together
 - Cross-day IP tracking — detects slow attacks that stay under hourly thresholds
+- Per-domain threshold overrides — set different limits for high-traffic or low-traffic domains
 - Admin session detection — automatically excludes your own `/wp-admin/` activity from alerts
 - Hosting infrastructure detection — auto-excludes server IPs by IPv6 prefix
 - Threat classification with severity levels (HIGH / MEDIUM / LOW)
@@ -199,7 +203,7 @@ A local Python script that reads your downloaded log files and generates a detai
 | Persistent threat | MEDIUM | IP active across 3+ distinct days |
 | Distributed scan | MEDIUM | Multiple IPs sending uniform requests in same minute |
 | Sensitive file exposure | MEDIUM | Request to backup or dump file paths |
-| Reconnaissance / scan | MEDIUM | Request to sensitive WordPress paths |
+| Reconnaissance / scan | MEDIUM | Request to sensitive paths |
 | Automated scanner | LOW | Known scanner user agent or empty user agent |
 | Probe | LOW | Disallowed HTTP method |
 
@@ -222,14 +226,24 @@ local-analyzer/
 
 **Step 2 — Configure**
 
-Edit `local-analyzer/config.json` to match your domain map and set your thresholds:
+Edit `local-analyzer/config.json` to match your domains and set your thresholds:
 
 ```json
-"domain_map": {
-    "example.com": "Main",
-    "sub.example.com": "Sub"
+"domains": {
+    "example.com": {
+        "folder": "Main"
+    },
+    "sub.example.com": {
+        "folder": "Sub",
+        "thresholds": {
+            "requests_per_hour": 1000,
+            "requests_per_day": 8000
+        }
+    }
 }
 ```
+
+Domains without a `thresholds` block inherit the global thresholds. Per-domain overrides only affect the thresholds you specify — all others fall back to the global values.
 
 **Step 3 — Run**
 
@@ -269,6 +283,7 @@ Add trusted IPs, paths, or user agents to `config.json` to exclude them from ana
     "user_agents": []
 }
 ```
+
 > **Note:** Your own IP may appear in flagged requests if you access your site's admin panel or make multiple requests in a short period. This is normal — simply add your IP to the whitelist before running the analyzer. Keep in mind that your IP may change every time you reconnect to the internet, so check it before each scan using a service like [whatismyip.com](https://www.whatismyip.com).
 
 > **Important:** Remove your own IPs from the whitelist before sharing `config.json` anywhere.
@@ -278,14 +293,15 @@ Add trusted IPs, paths, or user agents to `config.json` to exclude them from ana
 | Key | Description |
 |---|---|
 | `logs_base_path` | Folder where your downloaded logs are placed |
-| `domain_map` | Domain → folder name mapping |
-| `thresholds.requests_per_hour` | Alert threshold per IP per hour |
-| `thresholds.requests_per_day` | Alert threshold per IP per day |
+| `domains` | Domain → folder mapping, with optional per-domain `thresholds` |
+| `thresholds.requests_per_hour` | Global alert threshold per IP per hour |
+| `thresholds.requests_per_day` | Global alert threshold per IP per day |
 | `thresholds.login_posts_per_hour` | Brute force detection threshold |
 | `thresholds.persistent_ip_days` | Days before an IP is flagged as persistent |
 | `thresholds.xmlrpc_posts_per_session` | XML-RPC abuse threshold |
 | `thresholds.distributed_scan_min_ips` | Min IPs in same minute to trigger distributed scan alert |
-| `hosting_ipv6_prefixes` | IPv6 prefixes auto-classified as hosting infrastructure |
+| `thresholds.distributed_scan_min_avg` | Min average requests per IP before distributed scan fires |
+| `hosting_ipv6_prefixes` | IPv6 prefixes (full CIDR) auto-classified as hosting infrastructure |
 | `wordpress_internal_paths` | Paths silently ignored (wp-cron, admin-ajax, etc.) |
 | `sensitive_paths` | Paths that trigger reconnaissance alerts |
 | `shell_probe_paths` | Known PHP shell filenames — trigger HIGH alerts |
