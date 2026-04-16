@@ -11,6 +11,8 @@ require_once __DIR__ . '/config.php';
 function get_real_ip(): string {
     if (!empty($_SERVER['HTTP_CF_CONNECTING_IP'])) {
         $ip = $_SERVER['HTTP_CF_CONNECTING_IP'];
+    } elseif (!empty($_SERVER['HTTP_X_REAL_IP'])) {
+        $ip = $_SERVER['HTTP_X_REAL_IP'];
     } elseif (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
         $ip = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'])[0];
     } else {
@@ -35,7 +37,11 @@ $folder_name = $host_map[$host] ?? null;
 if ($folder_name === null) return;
 
 // --- 4. COLLECT AND SANITIZE REQUEST DATA ---
-$ip         = get_real_ip();
+$ip = get_real_ip();
+
+// Skip ignored IPs (internal server IPs, static personal IPs, etc.)
+if (isset($ignore_ips) && in_array($ip, $ignore_ips)) return;
+
 $time       = date('Y-m-d H:i:s');
 $method     = sanitize_log_field($_SERVER['REQUEST_METHOD']  ?? 'UNKNOWN', 10);
 $request    = sanitize_log_field($_SERVER['REQUEST_URI']     ?? '/', 500);
