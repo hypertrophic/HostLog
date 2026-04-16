@@ -1,9 +1,17 @@
 {
     "logs_base_path": "logs",
 
-    "domain_map": {
-        "example.com": "Main",
-        "sub.example.com": "Sub"
+    "domains": {
+        "example.com": {
+            "folder": "Main"
+        },
+        "sub.example.com": {
+            "folder": "Sub",
+            "thresholds": {
+                "requests_per_hour": 1000,
+                "requests_per_day": 8000
+            }
+        }
     },
 
     "thresholds": {
@@ -13,7 +21,8 @@
         "persistent_ip_days": 3,
         "xmlrpc_posts_per_session": 5,
         "distributed_scan_window_minutes": 60,
-        "distributed_scan_min_ips": 5
+        "distributed_scan_min_ips": 5,
+        "distributed_scan_min_avg": 3
     },
 
     "login_paths": [
@@ -27,7 +36,8 @@
         "/wp-admin/admin-ajax.php",
         "/wp-admin/load-scripts.php",
         "/wp-admin/load-styles.php",
-        "/wp-admin/async-upload.php"
+        "/wp-admin/async-upload.php",
+        "/jetpack"
     ],
 
     "sensitive_paths": [
@@ -80,7 +90,7 @@
     ],
 
     "hosting_ipv6_prefixes": [
-        "2a02:4780:"
+        "2a02:4780::/32"
     ],
 
     "suspicious_user_agents": [
