@@ -20,6 +20,11 @@ $host_map = [
     'sub.example.com'    => 'Sub',
 ];
 
+// --- IGNORE IPS ---
+// IPs that will never be logged.
+// Add your server's internal IPs and any static IP you want to exclude.
+$ignore_ips = ['127.0.0.1', '::1'];
+
 // --- CUSTOM FIELD ---
 // Optionally extract a custom value from the URL path for a specific domain.
 // Useful for tracking identifiers like member IDs, product slugs, etc.
@@ -31,13 +36,13 @@ $custom_field = [
 // Set to null to disable custom field extraction entirely:
 // $custom_field = null;
 
-// --- LOG ROTATION SIZE ---
-// Maximum log file size in bytes before rotation kicks in.
-// Default: 5MB. A new file is created when this limit is reached.
-define('LOG_MAX_SIZE', 5 * 1024 * 1024);
-
 // --- CUSTOM FIELD VALIDATION (optional) ---
 // If set, only values matching this pattern will be logged.
 // Leave as null to accept any value from the URL path.
 define('CUSTOM_FIELD_PATTERN', null);
-// Example: define('CUSTOM_FIELD_PATTERN', '#^Test\d+$#i');
+// Example: define('CUSTOM_FIELD_PATTERN', '#^ID\d+$#i');
+
+// --- LOG ROTATION SIZE ---
+// Maximum log file size in bytes before rotation kicks in.
+// Default: 5MB. A new file is created when this limit is reached.
+define('LOG_MAX_SIZE', 5 * 1024 * 1024);
