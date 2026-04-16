@@ -7,7 +7,6 @@
 #  A markdown report will be saved in the reports/ folder.
 # ============================================================
 
-import os
 import re
 import json
 import glob
@@ -36,7 +35,8 @@ except (FileNotFoundError, json.JSONDecodeError) as e:
     exit(1)
 
 LOGS_BASE_PATH          = SCRIPT_DIR / config['logs_base_path']
-DOMAIN_MAP              = config['domain_map']
+DOMAINS                 = config['domains']                          # full domain config
+DOMAIN_MAP              = {d: v['folder'] for d, v in DOMAINS.items()}
 THRESHOLDS              = config['thresholds']
 LOGIN_PATHS             = [p.lower() for p in config['login_paths']]
 SENSITIVE_PATHS         = [p.lower() for p in config['sensitive_paths']]
@@ -48,15 +48,15 @@ USER_ENUM_PATHS         = [p.lower() for p in config.get('user_enumeration_paths
 
 HOSTING_NETWORKS = []
 for p in config.get('hosting_ipv6_prefixes', []):
-    # Ensure common shorthand like '2a02:4780:' is handled as a prefix
-    p_clean = p
-    if p.endswith(':') and '/' not in p:
-        p_clean = p.rstrip(':') + '::/32'
-    
     try:
-        HOSTING_NETWORKS.append(ipaddress.ip_network(p_clean, strict=False))
+        HOSTING_NETWORKS.append(ipaddress.ip_network(p, strict=False))
     except ValueError:
         print(f"Warning: Invalid hosting IP network configuration: {p}")
+
+KNOWN_GOOD_BOTS         = [
+    'googlebot', 'bingbot', 'yandexbot', 'applebot',
+    'claudebot', 'facebookexternalhit'
+]
 
 SUSPICIOUS_UA           = [ua.lower() for ua in config['suspicious_user_agents']]
 ALLOWED_METHODS         = [m.upper() for m in config['allowed_methods']]
@@ -67,6 +67,7 @@ PERSISTENT_IP_DAYS      = THRESHOLDS.get('persistent_ip_days', 3)
 XMLRPC_THRESHOLD        = THRESHOLDS.get('xmlrpc_posts_per_session', 5)
 DISTRIBUTED_SCAN_WINDOW = THRESHOLDS.get('distributed_scan_window_minutes', 60)
 DISTRIBUTED_SCAN_MIN    = THRESHOLDS.get('distributed_scan_min_ips', 5)
+DISTRIBUTED_SCAN_MIN_AVG= THRESHOLDS.get('distributed_scan_min_avg', 3)
 ADMIN_UA_KEYWORDS       = ['mozilla', 'chrome', 'safari', 'firefox', 'edge']
 ADMIN_PATH_PREFIX       = '/wp-admin/'
 
@@ -88,8 +89,10 @@ def parse_line(line):
     if not m:
         return None
     try:
-        ts = datetime.strptime(m.group('timestamp'), '%Y-%m-%d %H:%M:%S')
-    except ValueError:
+        s = m.group('timestamp')
+        ts = datetime(int(s[0:4]), int(s[5:7]), int(s[8:10]),
+                      int(s[11:13]), int(s[14:16]), int(s[17:19]))
+    except (ValueError, IndexError):
         return None
     return {
         'timestamp':    ts,
@@ -141,6 +144,7 @@ def is_hosting_infrastructure(ip_str):
         INFRA_CACHE[ip_str] = res
         return res
     except ValueError:
+        INFRA_CACHE[ip_str] = False
         return False
 
 # ─── THREAT CLASSIFICATION ──────────────────────────────────
@@ -205,8 +209,10 @@ class AnalysisResults:
     total_count: int
     all_dates: List[str]
 
-def analyze(entries, domain_name):
+def analyze(entries, domain_name, domain_thresholds=None):
     """Performs a single-pass analysis of log entries."""
+    # Merge global thresholds with any domain-level overrides
+    thresholds = {**THRESHOLDS, **(domain_thresholds or {})}
     alerts_list     = []
     flagged_entries = []
 
@@ -300,16 +306,18 @@ def analyze(entries, domain_name):
         elif any(path.startswith(ep) for ep in EXPOSURE_PATHS):
             entry_flags.append('exposure path (backup/dump)')
 
-        # WordPress internal — classify separately, don't flag as recon
+        # WordPress internal — skip entirely, no flagging
         elif any(path.startswith(wp) for wp in WORDPRESS_INTERNAL):
-            pass  # silently skip, classified as internal
+            continue
 
         # Sensitive path
         elif any(path.startswith(sp) for sp in SENSITIVE_PATHS):
             entry_flags.append('sensitive path')
 
-        # Suspicious user agent
-        if ua == '' or ua == 'unknown':
+        # Suspicious user agent — skip known good bots entirely
+        if any(bot in ua for bot in KNOWN_GOOD_BOTS):
+            pass
+        elif ua == '' or ua == 'unknown':
             entry_flags.append('empty user agent')
         elif any(s in ua for s in SUSPICIOUS_UA):
             entry_flags.append('suspicious user agent')
@@ -338,7 +346,7 @@ def analyze(entries, domain_name):
         if ip in admin_ips:
             continue
         for hour, count in hours.items():
-            if count >= THRESHOLDS['requests_per_hour']:
+            if count >= thresholds['requests_per_hour']:
                 reason = f"{count} req/hour"
                 alerts_list.append({'ip': ip, 'when': hour, 'count': count,
                                     'reason': reason, 'threat': classify_threat(reason),
@@ -348,7 +356,7 @@ def analyze(entries, domain_name):
     for ip, total in ip_total.items():
         if ip in admin_ips:
             continue
-        if total >= THRESHOLDS['requests_per_day']:
+        if total >= thresholds['requests_per_day']:
             reason = f"{total} req/day"
             alerts_list.append({'ip': ip, 'when': 'all days', 'count': total,
                                 'reason': reason, 'threat': classify_threat(reason),
@@ -368,7 +376,7 @@ def analyze(entries, domain_name):
     # Login brute force
     for ip, hours in ip_login_hour.items():
         for hour, count in hours.items():
-            if count >= THRESHOLDS['login_posts_per_hour']:
+            if count >= thresholds['login_posts_per_hour']:
                 reason = f"{count} login POSTs in one hour"
                 alerts_list.append({'ip': ip, 'when': hour, 'count': count,
                                     'reason': reason, 'threat': classify_threat(reason),
@@ -399,8 +407,12 @@ def analyze(entries, domain_name):
         if len(ips) >= DISTRIBUTED_SCAN_MIN:
             counts = [minute_bucket_count[minute][ip] for ip in ips]
             avg    = sum(counts) / len(counts)
+            # Require a minimum average to avoid flagging normal organic traffic
+            # (e.g. 5 visitors each making 1 request in the same minute)
+            if avg < DISTRIBUTED_SCAN_MIN_AVG:
+                continue
             # Check if counts are suspiciously uniform (all within 20% of average)
-            uniform = all(abs(c - avg) / max(avg, 1) < 0.2 for c in counts)
+            uniform = all(abs(c - avg) / avg < 0.2 for c in counts)
             if uniform:
                 suspicious_windows.append((minute, len(ips), list(ips)[:5]))
 
@@ -613,12 +625,14 @@ def save_report(domain_slug, content):
     return str(filepath)
 
 def save_blocklist(domain_slug, alerts):
+    """Generates a plain text file of high-severity IPs for firewall importing."""
     high_ips = set()
     for a in alerts:
         if a.get('severity') == 'HIGH':
+            ip = a['ip']
             try:
-                ipaddress.ip_address(a['ip'])
-                high_ips.add(a['ip'])
+                ipaddress.ip_address(ip)
+                high_ips.add(ip)
             except ValueError:
                 pass
     if not high_ips:
@@ -630,7 +644,7 @@ def save_blocklist(domain_slug, alerts):
     return str(filepath)
 
 # ─── MAIN ───────────────────────────────────────────────────
-    
+
 def main():
     print(f"\nHostLog Analyzer")
     print(f"{'─' * 40}")
@@ -642,10 +656,15 @@ def main():
     for domain, folder in DOMAIN_MAP.items():
         print(f"\nAnalyzing: {domain} ({folder}/)")
 
+        # Per-domain threshold overrides (optional)
+        domain_thresholds = DOMAINS[domain].get('thresholds')
+        if domain_thresholds:
+            print(f"  Using domain-specific thresholds: {domain_thresholds}")
+
         # Using tqdm for progress tracking (falls back to generator if not installed)
         entries = tqdm(load_logs(folder), desc="  Reading logs", unit=" lines", leave=False)
 
-        res = analyze(entries, domain)
+        res = analyze(entries, domain, domain_thresholds)
 
         if res.total_count == 0:
             print(f"  No log entries found in {folder}/")
@@ -663,6 +682,8 @@ def main():
         print(f"  MEDIUM alerts: {medium_count}")
         print(f"  Persistent IPs: {persistent_count}")
         print(f"  Flagged requests: {len(res.flagged_entries)}")
+        if len(res.flagged_entries) >= 500:
+            print(f"  Warning: flagged entries cap reached (500) — some entries were not recorded")
 
         domain_slug = domain.replace('.', '-').replace('/', '-')
         report = generate_report(
