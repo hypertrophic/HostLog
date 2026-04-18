@@ -1,39 +1,55 @@
-# HostLog - v2.1.0
+# HostLog - v3.0.0
 
-A logging and analysis system for PHP sites hosted on **Hostinger Web Hosting**. Built to fill the gap left by Hostinger's lack of accessible raw access logs.
+A logging, analysis, and threat detection system for PHP sites hosted on **Hostinger Web Hosting**. Built to fill the gap left by Hostinger's lack of accessible raw access logs.
 
 ---
 
-## Two parts, one system
+## Three parts, one system
 
-| | Logger | Analyzer |
-|---|---|---|
-| **Language** | PHP | Python |
-| **Runs on** | Your Hostinger server | Your local machine |
-| **What it does** | Logs every request to daily files | Reads downloaded logs and generates a report |
-| **Output** | `.log` files outside `public_html` | Markdown report + blocklist file |
+| | Logger | Analyzer | Dashboard |
+|---|---|---|---|
+| **Language** | PHP | Python | PHP |
+| **Runs on** | Your Hostinger server | Your local machine | Your Hostinger server |
+| **What it does** | Logs every request to daily files | Reads downloaded logs and generates a report | Live browser-based interface for analysis, blocking, and log management |
+| **Output** | `.log` files outside `public_html` | Markdown report + blocklist file | Interactive dashboard |
 
 ### Repository structure
 
 ```
 HostLog/
-    logger.php              ← upload to server (outside public_html)
-    config.php              ← server configuration
-    .htaccess               ← drop in each site root
     README.md
     LICENSE
+    PRIVATE/
+        hostinger-logger/
+            logger.php          ← upload outside public_html
+            config.php          ← logger configuration
+            .htaccess           ← drop in each site root
+        hostlog-config/
+            config.php          ← dashboard configuration (keep outside public_html)
+            analyzer.php        ← dashboard analysis engine (keep outside public_html)
+    PUBLIC/
+        dashboard/
+            index.php           ← login page
+            dashboard.php       ← main dashboard view
+            actions.php         ← AJAX endpoint for all dashboard actions
+            assets/
+                style.css
+                app.js
+            .htaccess           ← blocks directory listing
     local-analyzer/
-        analyzer.py         ← run locally after downloading logs
-        config.json         ← analyzer configuration
-        logs/               ← place your downloaded logs here (read Note.md)
-        reports/            ← reports saved here automatically (read Note.md)
+        analyzer.py             ← run locally after downloading logs
+        config.json             ← analyzer configuration
+        logs/                   ← place your downloaded logs here (read Note.md)
+        reports/                ← reports saved here automatically (read Note.md)
 ```
+
+> **Security note:** Everything inside `PRIVATE/` must be uploaded **outside** `public_html` on your server. Everything inside `PUBLIC/` goes inside `public_html`. See the [Logger Installation](#installation) and [Dashboard Installation](#dashboard-installation) sections.
 
 ---
 
 ## Why this exists
 
-Hostinger shared hosting does not provide terminal access or raw Apache/Nginx log files. HostLog fills that gap — the logger runs automatically before every page load via `auto_prepend_file`, and the analyzer processes those logs locally to surface threats and suspicious activity.
+Hostinger shared hosting does not provide terminal access or raw Apache/Nginx log files. HostLog fills that gap — the logger runs automatically before every page load via `auto_prepend_file`, and the analyzer and dashboard process those logs to surface threats and suspicious activity.
 
 ---
 
@@ -41,7 +57,7 @@ Hostinger shared hosting does not provide terminal access or raw Apache/Nginx lo
 
 ### Features
 
-- Cloudflare and Proxy-aware IP detection — supports `CF-Connecting-IP`, `X-Real-IP`, and `X-Forwarded-For`
+- Cloudflare and proxy-aware IP detection — supports `CF-Connecting-IP`, `X-Real-IP`, and `X-Forwarded-For`
 - Spoofing-resistant — validates IP headers before trusting them
 - Log injection prevention — strips newlines and control characters from all fields
 - Automatic daily log files — one file per domain per day
@@ -74,7 +90,7 @@ Each request is logged as a single pipe-separated line:
 
 **Step 1 — Upload logger files**
 
-Upload `logger.php` and `config.php` to a folder **outside** `public_html`. On Hostinger this is typically:
+From the `PRIVATE/hostinger-logger/` folder, upload `logger.php` and `config.php` to a folder **outside** `public_html`. On Hostinger this is typically:
 
 ```
 /home/your-username/logger.php
@@ -134,6 +150,7 @@ Visit your site and check the logs folder. You should see:
 |---|---|---|
 | `LOG_BASE_PATH` | `string` | Absolute path to log storage folder |
 | `$host_map` | `array` | Domain → folder name mapping |
+| `$ignore_ips` | `array` | IPs that will never be logged |
 | `$custom_field` | `array\|null` | Custom field extraction config, or `null` to disable |
 | `LOG_MAX_SIZE` | `int` | Max log file size in bytes before rotation (default: 5MB) |
 | `CUSTOM_FIELD_PATTERN` | `string\|null` | Optional regex to validate extracted custom field values. Set to `null` to accept any value. |
@@ -314,12 +331,156 @@ Add trusted IPs, paths, or user agents to `config.json` to exclude them from ana
 
 ---
 
-## Coming soon
+## Part 3 — Dashboard
 
-- **PHP dashboard** — browser-based interface to view traffic, flagged requests, and alerts directly on the server
-- **Auto-blocking** — automatically write flagged IPs to `.htaccess`
-- **Alert system** — notifications when thresholds are exceeded
-- **Log deletion** — manage and clean up old log files from the dashboard
+A browser-based interface hosted on your server. Password protected. Runs the full analysis engine in PHP — no Python or terminal required.
+
+### Features
+
+**Overview**
+- Per-domain summary table — entries, unique IPs, alert counts, log period
+- Stat cards — total entries, HIGH alerts, flagged requests, blocked IPs
+
+**Alerts & threat detection**
+- Full PHP port of the analyzer's detection engine — same logic, same severity levels, runs live on the server
+- Alerts panel grouped by severity (HIGH / MEDIUM / LOW) with one-click blocking
+- Flagged requests table with threat classification and per-entry block button
+
+**IP management**
+- IP rankings by request count with inline bar chart
+- One-click manual block — writes deny rule to `.htaccess`
+- One-click unblock per IP
+- Unblock all button
+- Classification labels — Admin session, Hosting infrastructure, Blocked
+
+**Whitelist manager**
+- Add or remove IPs, paths, or user agents at runtime
+- Changes are stored in `whitelist.json` and merged with config on next load
+
+**Log management**
+- Download raw or filtered logs by domain and date range
+- Delete logs by domain with time range selector (30 / 60 / 90 days or specific day)
+- Confirmation step before deletion
+
+**Custom field export** *(only shown if a custom field is configured)*
+- Aggregates URL-extracted values per domain with a date range selector
+- CSV export sorted by count descending
+
+**Auth**
+- bcrypt password verification
+- CSRF token on all state-changing actions
+- Session timeout after 30 minutes of inactivity
+- Lockout after 5 failed login attempts
+
+**UI**
+- Dark and light theme with toggle, persisted in `localStorage`
+- Animated grid login page, section transitions, hover lifts, toast notifications
+- JetBrains Mono + Syne typography
+
+### Dashboard installation
+
+**Step 1 — Upload files to the correct locations**
+
+The repository is split into `PRIVATE/` and `PUBLIC/` to make this straightforward:
+
+Upload the contents of `PRIVATE/hostlog-config/` outside `public_html`:
+```
+/home/your-username/hostlog-config/
+    config.php      ← dashboard configuration (never web-accessible)
+    analyzer.php    ← analysis engine (never web-accessible)
+```
+
+Upload the contents of `PUBLIC/dashboard/` inside `public_html`:
+```
+/home/your-username/public_html/dashboard/
+    index.php
+    dashboard.php
+    actions.php
+    assets/
+        style.css
+        app.js
+    .htaccess
+```
+
+Your full server layout should look like this:
+```
+/home/your-username/
+    hostlog-config/
+        config.php
+        analyzer.php
+    logs/
+        Main/
+        Sub/
+    public_html/
+        dashboard/
+            index.php
+            dashboard.php
+            actions.php
+            assets/
+                style.css
+                app.js
+            .htaccess
+```
+
+**Step 2 — Update the require paths**
+
+In `index.php`, `dashboard.php`, and `actions.php`, find this line near the top and replace `your-username` with your actual Hostinger username:
+
+```php
+require_once '/home/your-username/hostlog-config/config.php';
+```
+
+**Step 3 — Add `.htaccess` to the dashboard folder**
+
+Create `public_html/dashboard/.htaccess`:
+
+```apacheconf
+Options -Indexes
+
+<FilesMatch "^(config\.php|analyzer\.php|whitelist\.json)$">
+    Order deny,allow
+    Deny from all
+</FilesMatch>
+```
+
+**Step 4 — Configure `config.php`**
+
+Edit the dashboard `config.php` to set your password hash, log path, `.htaccess` path, and domain map:
+
+```php
+define('DASHBOARD_PASSWORD_HASH', '$2y$12$your-bcrypt-hash-here');
+define('LOG_BASE_PATH',           '/home/your-username/logs');
+define('HTACCESS_PATH',           '/home/your-username/public_html/.htaccess');
+
+$host_map = [
+    'example.com'     => 'Main',
+    'sub.example.com' => 'Sub',
+];
+```
+
+To generate a bcrypt password hash without terminal access, use an online bcrypt generator or ask your local PHP environment:
+
+```bash
+php -r "echo password_hash('your-password', PASSWORD_BCRYPT);"
+```
+
+**Step 5 — Access the dashboard**
+
+Visit `https://yourdomain.com/dashboard/` — you will be prompted to log in.
+
+### Dashboard configuration reference
+
+| Option | Description |
+|---|---|
+| `DASHBOARD_PASSWORD_HASH` | bcrypt hash of your dashboard password |
+| `SESSION_TIMEOUT` | Auto-logout after inactivity in seconds (default: 30 min) |
+| `MAX_LOGIN_ATTEMPTS` | Failed attempts before lockout (default: 5) |
+| `LOCKOUT_DURATION` | Lockout duration in seconds (default: 15 min) |
+| `LOG_BASE_PATH` | Must match your logger's `LOG_BASE_PATH` |
+| `HTACCESS_PATH` | Absolute path to the `.htaccess` file used for IP blocking |
+| `$host_map` | Must match your logger's `$host_map` |
+| `$thresholds` | Global analysis thresholds |
+| `$domain_thresholds` | Per-domain threshold overrides |
 
 ---
 
