@@ -1,0 +1,128 @@
+{
+    "logs_base_path": "logs",
+
+    "domains": {
+        "example.com": {
+            "folder": "Main"
+        },
+        "sub.example.com": {
+            "folder": "Sub",
+            "thresholds": {
+                "requests_per_hour": 1000,
+                "requests_per_day": 8000
+            }
+        }
+    },
+
+    "thresholds": {
+        "requests_per_hour": 300,
+        "requests_per_day": 1000,
+        "login_posts_per_hour": 10,
+        "persistent_ip_days": 3,
+        "xmlrpc_posts_per_session": 5,
+        "distributed_scan_window_minutes": 60,
+        "distributed_scan_min_ips": 5,
+        "distributed_scan_min_avg": 3
+    },
+
+    "login_paths": [
+        "/wp-login.php",
+        "/login",
+        "/admin/login"
+    ],
+
+    "wordpress_internal_paths": [
+        "/wp-cron.php",
+        "/wp-admin/admin-ajax.php",
+        "/wp-admin/load-scripts.php",
+        "/wp-admin/load-styles.php",
+        "/wp-admin/async-upload.php",
+        "/jetpack"
+    ],
+
+    "sensitive_paths": [
+        "/wp-login.php",
+        "/wp-admin",
+        "/xmlrpc.php",
+        "/wp-config.php",
+        "/.env",
+        "/.git",
+        "/wp-content/uploads",
+        "/wp-includes",
+        "/readme.html",
+        "/license.txt",
+        "/wp-json/wp/v2/users",
+        "/wp-content/debug.log",
+        "/phpmyadmin",
+        "/config"
+    ],
+
+    "xmlrpc_paths": [
+        "/xmlrpc.php"
+    ],
+
+    "user_enumeration_paths": [
+        "/wp-json/wp/v2/users",
+        "/?author="
+    ],
+
+    "shell_probe_paths": [
+        "/wp_filemanager.php",
+        "/filemanager.php",
+        "/shell.php",
+        "/cmd.php",
+        "/c99.php",
+        "/r57.php",
+        "/b374k.php",
+        "/alfa.php",
+        "/wso.php"
+    ],
+
+    "exposure_paths": [
+        "/backup",
+        "/backup.zip",
+        "/backup.sql",
+        "/db.sql",
+        "/dump.sql",
+        "/database.sql",
+        "/wp-backup",
+        "/.backup"
+    ],
+
+    "hosting_ipv6_prefixes": [
+        "2a02:4780::/32"
+    ],
+
+    "suspicious_user_agents": [
+        "sqlmap",
+        "nikto",
+        "wpscan",
+        "masscan",
+        "nmap",
+        "zgrab",
+        "nuclei",
+        "python-requests",
+        "python-urllib",
+        "go-http-client",
+        "curl/",
+        "wget/",
+        "scrapy",
+        "libwww-perl",
+        "semrush",
+        "ahrefsbot",
+        "dotbot",
+        "majestic",
+        "petalbot"
+    ],
+
+    "allowed_methods": [
+        "GET",
+        "POST"
+    ],
+
+    "whitelist": {
+        "ips": [],
+        "paths": [],
+        "user_agents": []
+    }
+}
