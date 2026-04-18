@@ -1,0 +1,2 @@
+- Logs and Reports will be saved automatically in `logs/` & `reports/`
+- These folders will be created automatically (if not existent) when you run `analyzer.py`
