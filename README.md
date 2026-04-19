@@ -1,4 +1,5 @@
 # HostLog - v3.0.0
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/hypertrophic/HostLog)
 
 A logging, analysis, and threat detection system for PHP sites hosted on **Hostinger Web Hosting**. Built to fill the gap left by Hostinger's lack of accessible raw access logs.
 
